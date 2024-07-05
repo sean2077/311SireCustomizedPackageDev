@@ -1,11 +1,9 @@
+.vscode
+
 .trash
 
 tmp*
 .clang-format
-
-*.idb
-*.nam
-*.til
 
 /内存资料
 
