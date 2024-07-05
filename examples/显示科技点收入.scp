@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomModifyPackage>
+    <PackageName>显示科技点收入</PackageName>
+    <PackageAuthor>张扬</PackageAuthor>
+    <PackageDiscription>城市港关的状态页显示科技点收入</PackageDiscription>
+    <CustomModifyItems>
+        <CustomModifyItem>
+            <Caption>开启</Caption>
+            <Enabled>true</Enabled>
+            <Codes>
+                <Code>
+                    <Description>修改都市一览状态页的数组地址</Description>
+                    <Address>008BC1BC</Address>
+                    <EnableCode>20 00 97 00 0A</EnableCode>
+                    <DisableCode>20 03 91 00 09</DisableCode>
+                </Code>
+                <Code>
+                    <Description>都市一览状态页新数组</Description>
+                    <Address>00970020</Address>
+                    <EnableCode>01 00 00 00 1E 00 00 00 05 00 00 00 04 00 00 00 29 00 00 00 0F 00 00 00 11 00 00 00 12 00 00 00 10 00 00 00 26 00 00 00</EnableCode>
+                    <DisableCode>00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00</DisableCode>
+                </Code>
+            </Codes>
+        </CustomModifyItem>
+    </CustomModifyItems>
+</CustomModifyPackage>
