@@ -15,7 +15,12 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 STRUCTS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "结构体汇总.md")
 
 
-FORCE_UPDATE_STRUCT_ARRAYS = False  # 强制更新结构体数组
+FORCE_UPDATE_STRUCT_ARRAYS = False  # 强制更新结构体数组(包含链表节点)
+
+LINKED_LIST_STRUCT_NAME = {  # key: struct_name, value: node_name
+    "struct_person_list": "struct_person_node",
+    "struct_building_list": "struct_building_node",
+}
 
 #######################################################################################################
 ###                                            Utils                                                ###
@@ -549,6 +554,7 @@ def _find_struct_array_size(start_addr, struct_size):
 
 
 def _create_struct_array(struct: Struct):
+    tinfo = _get_tinfo_from_stru_name(struct.name)
     for i, array_start_addr in enumerate(struct.array_start_addrs):
         # 先找出数组的结束地址和大小
         if len(struct.array_end_addrs) > i:
@@ -592,6 +598,8 @@ def _create_struct_array(struct: Struct):
             for addr in range(array_start_addr, array_end_addr, struct.size):
                 idaapi.create_struct(addr, struct.size, struct.id)
                 if cnt > 0:
+                    idaapi.set_name(addr, f"{struct.name}_{addr:x}")
+                    idaapi.set_tinfo(addr, tinfo)
                     idaapi.set_cmt(addr, f"{struct.name}_ARRAY[{cnt}]", 1)
                 cnt += 1
 
@@ -606,6 +614,46 @@ def _create_struct_array(struct: Struct):
         idaapi.msg(
             f"Struct array {array_name} created, size: {array_size}, struct size: {struct.size}, start at {array_start_addr:x}, end at {array_end_addr:x}\n"
         )
+
+
+def _traverse_linked_list(struct: Struct):
+    node_name = LINKED_LIST_STRUCT_NAME.get(struct.name, None)
+    if node_name is None:
+        return
+    node_sid = idaapi.get_struc_id(node_name)
+    if node_sid == idaapi.BADADDR:
+        return
+    node_size = idaapi.get_struc_size(node_sid)
+    node_tinfo = _get_tinfo_from_stru_name(node_name)
+    for list_addr in struct.array_start_addrs:
+        visited = set()
+        # 一般链表offset=0x4处存放下一个节点的地址
+        start_address = idaapi.get_wide_dword(list_addr + 4)
+        current = start_address
+        while current != 0 and current not in visited:
+            idaapi.create_struct(current, node_size, node_sid)
+            # 设置当前的 tinfo 为该 node 结构体
+            idaapi.set_tinfo(current, node_tinfo)
+            # 命名为 node_name+current_address
+            idaapi.set_name(current, f"{node_name}_{current:x}")
+
+            idaapi.msg(f"Current node: {current:x}\n")
+            visited.add(current)
+
+            # Get the next pointer
+            next_ptr = idaapi.get_wide_dword(current)  # offset
+            if next_ptr == 0 or next_ptr == idaapi.BADADDR:
+                idaapi.msg("Reached end of list (null pointer)\n")
+                break
+
+            current = next_ptr
+
+        if current in visited and current != start_address:
+            idaapi.msg(f"Cycle detected at {current:x}\n")
+        elif current == start_address:
+            idaapi.msg("Traversal complete, returned to start node\n")
+
+        idaapi.msg(f"Total {node_name} nodes: {len(visited)}\n")
 
 
 def _import_struct(struct: Struct) -> bool:
@@ -678,7 +726,10 @@ def _import_struct(struct: Struct) -> bool:
 
     # IDA 视图中创建结构体数组
     if FORCE_UPDATE_STRUCT_ARRAYS or (not struct.array_updated and len(struct.array_start_addrs) > 0):
-        _create_struct_array(struct)
+        if struct.name in LINKED_LIST_STRUCT_NAME:
+            _traverse_linked_list(struct)
+        else:
+            _create_struct_array(struct)
         struct.array_updated = True
 
     return True

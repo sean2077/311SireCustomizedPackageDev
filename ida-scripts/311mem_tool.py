@@ -506,7 +506,7 @@ def export_records():
             # 忽略一些特例
             if re.match(r"a+[A-Z]", name):
                 continue
-            if any(name.startswith(prefix) for prefix in ("sub_", "loc_", "j_", "def_", "__", "unknown_")):
+            if any(name.startswith(prefix) for prefix in ("stru", "sub_", "loc_", "j_", "def_", "__", "unknown_")):
                 continue
             if any(cmt.startswith(prefix) for prefix in ("Microsoft", "MFC", "?", "D3DX", "jumptable")):
                 continue
