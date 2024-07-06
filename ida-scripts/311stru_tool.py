@@ -4,6 +4,7 @@ san11pk's IDA Struct Tool
 
 import os
 import re
+import sys
 from datetime import datetime
 
 import prettytable
@@ -240,22 +241,27 @@ class StructMDFileParser:
         if self._state == self._STATE_ON_TABLE:
             return self._state_on_table(line)
 
+    def _create_new_struct(self, line: str):
+        # 判断是否需要过滤
+        table_index = 0
+        if self._specific_table_indexes:
+            # 表格标题形如 "## [1]xxx"，提取出表格索引
+            m = _STRUCT_INDEX_PAT.search(line)
+            if m:
+                table_index = int(m.group(1))
+        if not self._specific_table_indexes or table_index in self._specific_table_indexes:
+            # 找到了一个表格标题
+            title = line[3:].strip()
+            self._state = self._STATE_BEFORE_TABLE
+            self._current_table = Struct(title)
+            self._structs.append(self._current_table)
+            print(f"Found table: {title}")
+            return True
+        return False  # 未创建表格
+
     def _state_finding_title(self, line: str):
         if line.startswith("## "):
-            # 判断是否需要过滤
-            table_index = 0
-            if self._specific_table_indexes:
-                # 表格标题形如 "## [1]xxx"，提取出表格索引
-                m = _STRUCT_INDEX_PAT.search(line)
-                if m:
-                    table_index = int(m.group(1))
-            if not self._specific_table_indexes or table_index in self._specific_table_indexes:
-                # 找到了一个表格标题
-                title = line[3:].strip()
-                self._state = self._STATE_BEFORE_TABLE
-                self._current_table = Struct(title)
-                self._structs.append(self._current_table)
-                print(f"Found table: {title}")
+            if self._create_new_struct(line):
                 return
 
         if not self._current_table:
@@ -267,6 +273,10 @@ class StructMDFileParser:
         if self._reach_table_row(line):
             self._state = self._STATE_ON_TABLE
             return
+
+        if line.startswith("## "):  ## 该表为空表，直接下一个表格
+            if self._create_new_struct(line):
+                return
 
         # 解析结构体元信息
         self._current_table.parse_meta_line(line)
@@ -314,6 +324,47 @@ class StructMDFileParser:
         """判断是否到达表格内容开始行"""
         return any(line.startswith(x) for x in ("| ---", "|--", "| :--", "|:--"))
 
+
+def update_structs_file():
+    """更新结构体文件，如结构体序号, 新建未定义结构体等"""
+    parser = StructMDFileParser()
+    structs = parser.parse(STRUCTS_FILE)
+
+    # 重新编号
+    for i, struct in enumerate(structs):
+        # 去掉原有的序号
+        items = struct.title.split("]")
+        if len(items) > 1:
+            struct.title = items[1].strip()
+        struct.title = f"[{i+1}]{struct.title}"
+
+    # 如果结构体 fields 为空或fields[-1]的 offset+field_size < size，添加一个 int 字段
+    for struct in structs:
+        if struct.size == 0:
+            continue
+        if not struct.fields:
+            struct.fields.append(StructField(struct.size - 4, 4, "int", "", ""))
+            continue
+        last_field = struct.fields[-1]
+        if last_field.offset + last_field.size < struct.size:
+            struct.fields.append(StructField(struct.size - 4, 4, "int", "", ""))
+
+    # 如果结构体offset=0处没有字段，添加一个 int 字段
+    for struct in structs:
+        for field in struct.fields:
+            if field.offset == 0:
+                break
+        else:
+            struct.fields.insert(0, StructField(0, 4, "int", "", ""))
+
+    parser.write_file(STRUCTS_FILE)
+
+
+if __name__ == "__main__":
+    # 解析参数 -u
+    if len(sys.argv) > 1 and sys.argv[1] == "-u":
+        update_structs_file()
+        sys.exit(0)
 
 #######################################################################################################
 ###                                         IDA 操作相关                                             ###
