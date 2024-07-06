@@ -15,7 +15,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 STRUCTS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "结构体汇总.md")
 
 
-FORCE_UPDATE_STRUCT_ARRAYS = True  # 强制更新结构体数组
+FORCE_UPDATE_STRUCT_ARRAYS = False  # 强制更新结构体数组
 
 #######################################################################################################
 ###                                            Utils                                                ###
@@ -134,7 +134,6 @@ class Struct:
     array_sizes: list[int] = field(factory=list, init=False)
     array_updated: bool = field(default=False, init=False)
     last_update: str = field(default="", init=False)
-    wip: bool = field(default=False, init=False)  # 是否为还未完成的结构体
 
     # 解析后的字段
     fields: list[StructField] = field(factory=list, init=False)  # 表格中的字段
@@ -154,7 +153,6 @@ class Struct:
         "array_sizes": ("array_sizes", _cvt_int_array),
         "array_updated": ("array_updated", lambda x: x.lower() == "true"),
         "last_update": ("last_update", str.strip),
-        "wip": ("wip", lambda x: x.lower() == "true"),
     }
 
     def parse_meta_line(self, line: str):
@@ -181,7 +179,6 @@ class Struct:
         lines.append(f"- array_sizes: {','.join(map(str, self.array_sizes))}")
         lines.append(f"- array_updated: {self.array_updated}")
         lines.append(f"- last_update: {self.last_update}")
-        lines.append(f"- wip: {self.wip}")
 
         return [line.strip() + "\n" for line in lines]
 
@@ -694,9 +691,6 @@ def import_structs(specific_table_indexes: list[int] = None):
 
     for i, struct in enumerate(structs):
         idaapi.msg(f"Importing {i+1}/{len(structs)}: {struct.name_zh}({struct.name}) ...\n")
-        if struct.wip:
-            idaapi.msg(f"Skipped WIP struct: {struct.name_zh}({struct.name})\n")
-            continue
         if _import_struct(struct):
             idaapi.msg("Imported.\n")
         else:
