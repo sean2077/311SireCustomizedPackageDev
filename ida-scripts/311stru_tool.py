@@ -585,10 +585,13 @@ def _import_struct(struct: Struct) -> bool:
     idaapi.set_struc_cmt(sid, struct.comment, True)
 
     # 结构体字段
+    if not is_update:
+        # 创建新结构体，则扩充结构体大小
+        idaapi.expand_struc(sptr, 0, struct.size)
+
     for field in struct.fields:
         if is_update:  # 更新结构体时，先删除原有成员
             idaapi.del_struc_members(sptr, field.offset, field.offset + field.size)
-
         # 添加成员
         data_flag = _get_data_flags(field)
         if field._pure_data_type.startswith("struct_"):  # 结构体
@@ -684,6 +687,7 @@ def _export_structs(sid: int, struct: Struct):
 
 
 def export_structs():
+    idaapi.msg("-" * 80 + "\n")
     idaapi.msg("Exporting structs ...\n")
 
     # 先解析出已有的结构体
