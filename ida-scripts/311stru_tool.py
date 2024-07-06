@@ -15,6 +15,8 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 STRUCTS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "结构体汇总.md")
 
 
+FORCE_UPDATE_STRUCT_ARRAYS = True  # 强制更新结构体数组
+
 #######################################################################################################
 ###                                            Utils                                                ###
 #######################################################################################################
@@ -678,8 +680,7 @@ def _import_struct(struct: Struct) -> bool:
         return False
 
     # IDA 视图中创建结构体数组
-    # struct.array_updated = False
-    if not struct.array_updated and len(struct.array_start_addrs) > 0:
+    if FORCE_UPDATE_STRUCT_ARRAYS or (not struct.array_updated and len(struct.array_start_addrs) > 0):
         _create_struct_array(struct)
         struct.array_updated = True
 
