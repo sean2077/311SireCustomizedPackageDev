@@ -19,6 +19,8 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 MEM_RECORDS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "内存地址汇总.md")
 
+FORMAT_MARKDOWN = False  # 是否格式化 markdown 输出
+
 ##########################################################################
 ###                               Utils                                ###
 ##########################################################################
@@ -77,6 +79,7 @@ def reach_table_start(line: str) -> bool:
 ###                           内存地址记录相关                            ###
 ##########################################################################
 
+FIELD_NAMES = ("地址", "类型", "名称", "标签", "注释", "附加信息")
 
 RECORD_INFO_SEP = ";"  # 附加信息分隔符
 RECORD_TAG_SEP = ","  # 标签分隔符
@@ -166,7 +169,6 @@ def collect_records(file_path: str = MEM_RECORDS_FILE) -> tuple[list[Record], di
 
 
 def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
-    headers = ("地址", "类型", "名称", "标签", "注释", "附加信息")
     rows = []
     for record in records:
         info = RECORD_INFO_SEP.join([f"{k}={v}" for k, v in record._info.items()])
@@ -178,7 +180,7 @@ def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
     tb = PrettyTable()
     tb.set_style(MARKDOWN)
     tb.align = "l"
-    tb.field_names = headers
+    tb.field_names = FIELD_NAMES
     for row in rows:
         tb.add_row(row)
 
@@ -195,7 +197,13 @@ def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
 
     with open(dest_file, "w", encoding="utf-8") as f:
         f.writelines(headers)
-        f.write(tb.get_string().replace("-|", " |"))  # 与 vscode markdown 插件格式化结果一致
+        if FORMAT_MARKDOWN:
+            f.write(tb.get_string().replace("-|", " |"))  # 与 vscode markdown 插件格式化结果一致
+        else:
+            f.write((f"| {' | '.join(FIELD_NAMES)} |\n"))
+            f.write("| --- | --- | --- | --- | --- | --- |\n")
+            for row in rows:
+                f.write(f"| {' | '.join(row) } |\n")
         f.write("\n")
 
 
