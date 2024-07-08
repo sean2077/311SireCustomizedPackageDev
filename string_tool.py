@@ -1,3 +1,4 @@
+#!python
 # Description: A simple tool to convert ASCII to Big5 and vice versa.
 import argparse
 
@@ -34,6 +35,32 @@ def traditional_to_simplified_string(traditional_string):
     return simplified_string
 
 
+# 格式化 bigs 输入
+def format_big5_input(big5_input):
+    # 支持格式：
+    # 0BCh, 0D0h, 0B7h, 0C7h, 0B8h, 0CBh, 0B3h, 0C6h, 0AAh
+    # BC D0
+    # BCD0
+
+    # 如果以逗号分隔
+    if "," in big5_input:
+        items = big5_input.split(",")
+    # 如果以空格分隔
+    elif " " in big5_input:
+        items = big5_input.split(" ")
+    # 如果没有分隔符，直接返回
+    else:
+        return bytes.fromhex(big5_input)
+
+    # 去掉 h 后缀
+    items = [item.replace("h", "") for item in items]
+
+    # 校验 16 进制数
+    items = [int(item, 16) for item in items]
+
+    return bytes(items)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert ASCII to Big5 and vice versa")
     parser.add_argument("-a", "--ascii_to_big5", metavar="STRING", help="Convert ASCII to Big5")
@@ -47,7 +74,7 @@ def main():
         big5_bytes = ascii_to_big5(translated_string)
         print("Big5 编码:", bytes_to_hex_string(big5_bytes))
     elif args.big5_to_ascii:
-        big5_bytes = bytes.fromhex(args.big5_to_ascii)
+        big5_bytes = format_big5_input(args.big5_to_ascii)
         ascii_string_back = big5_to_ascii(big5_bytes)
         print("ASCII 解码:", ascii_string_back)
     else:

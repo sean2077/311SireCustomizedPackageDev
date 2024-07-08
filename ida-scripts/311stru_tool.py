@@ -16,6 +16,7 @@ STRUCTS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "结构体�
 
 
 FORCE_UPDATE_STRUCT_ARRAYS = False  # 强制更新结构体数组(包含链表节点)
+DO_NOT_MAKE_ARRAY = True  # 不创建数组，而是创建多个结构体
 
 LINKED_LIST_STRUCT_NAME = {  # key: struct_name, value: node_name
     "struct_person_list": "struct_person_node",
@@ -585,7 +586,8 @@ def _create_struct_array(struct: Struct):
 
         # 创建结构体数组
         idaapi.del_items(array_start_addr, idaapi.DELIT_SIMPLE, array_size * struct.size)
-        if array_size <= 100 or array_size * struct.size < 0x1000:  # 小数组
+        make_array = not DO_NOT_MAKE_ARRAY and (array_size <= 100 or array_size * struct.size < 0x1000)
+        if make_array:  # 小数组
             idaapi.create_struct(array_start_addr, struct.size, struct.id)
             if not idc.make_array(array_start_addr, array_size):
                 idaapi.warning(f"Failed to create array at {array_start_addr:x}.\n")
