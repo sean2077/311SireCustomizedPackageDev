@@ -79,10 +79,7 @@ def reach_table_start(line: str) -> bool:
 ###                           内存地址记录相关                            ###
 ##########################################################################
 
-FIELD_NAMES = ("地址", "类型", "名称", "标签", "注释", "附加信息")
-
-RECORD_INFO_SEP = ";"  # 附加信息分隔符
-RECORD_TAG_SEP = ","  # 标签分隔符
+RECORD_FIELDS = ("地址", "类型", "名称", "注释", "附加信息")
 
 
 @dataclass
@@ -90,29 +87,26 @@ class Record:
     address: int
     type: str
     name: str = ""
-    tags: list[str] = field(default_factory=list)
     comment: str = ""
 
     _info: dict = field(default_factory=dict)  # 附加信息, 形如 key1=value1,key2=value2
 
     @classmethod
-    def from_table_row(cls, row: str):  # | 地址 | 类型 | 名称 | 标签 | 注释 | 附加信息 |
+    def from_table_row(cls, row: str):  # | 地址 | 类型 | 名称 | 注释 | 附加信息 |
         items = row.strip().strip("|").split("|")
-        if len(items) != 6:
+        if len(items) != len(RECORD_FIELDS):
             raise ValueError(f"Invalid row: {row}")
-        address, type_, name, tags, comment, info = items
+        address, type_, name, comment, info = items
         address = int(address, 16)
         type_ = type_.strip()
         name = name.strip()
-        tags = tags.strip()
-        tags = list(tags.strip().split(RECORD_TAG_SEP)) if tags else []
         comment = comment.strip().replace("\\n", "\n")
-        ret = cls(address, type_, name, tags, comment)
+        ret = cls(address, type_, name, comment)
 
         # 附加信息
         info = info.strip()
         if info:
-            for item in info.split(RECORD_INFO_SEP):
+            for item in info.split(";"):
                 key, value = item.split("=")
                 ret._info[key.strip()] = value.strip()
 
@@ -171,16 +165,16 @@ def collect_records(file_path: str = MEM_RECORDS_FILE) -> tuple[list[Record], di
 def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
     rows = []
     for record in records:
-        info = RECORD_INFO_SEP.join([f"{k}={v}" for k, v in record._info.items()])
+        info = ";".join([f"{k}={v}" for k, v in record._info.items()])
         comment = record.comment
         if comment:
             comment = comment.replace("\n", "\\n")
-        rows.append((f"{record.address:08x}", record.type, record.name, RECORD_TAG_SEP.join(record.tags), comment, info))
+        rows.append((f"{record.address:08x}", record.type, record.name, comment, info))
 
     tb = PrettyTable()
     tb.set_style(MARKDOWN)
     tb.align = "l"
-    tb.field_names = FIELD_NAMES
+    tb.field_names = RECORD_FIELDS
     for row in rows:
         tb.add_row(row)
 
@@ -200,8 +194,8 @@ def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
         if FORMAT_MARKDOWN:
             f.write(tb.get_string().replace("-|", " |"))  # 与 vscode markdown 插件格式化结果一致
         else:
-            f.write((f"| {' | '.join(FIELD_NAMES)} |\n"))
-            f.write("| --- | --- | --- | --- | --- | --- |\n")
+            f.write((f"| {' | '.join(RECORD_FIELDS)} |\n"))
+            f.write(f"| {' | '.join(['---'] * len(RECORD_FIELDS) )} |\n")
             for row in rows:
                 f.write(f"| {' | '.join(row) } |\n")
         f.write("\n")
@@ -366,7 +360,7 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                             dst_record = records[addr2idx[dst_addr]]
                             dst_record.comment = dst_comment
                         else:
-                            new_record = Record(dst_addr, "函数", tags=record.tags, comment=dst_comment)
+                            new_record = Record(dst_addr, "函数", comment=dst_comment)
                             records.append(new_record)
                             addr2idx[dst_addr] = len(records) - 1
                     else:
@@ -380,7 +374,7 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                             dst_record = records[addr2idx[dst_addr]]
                             dst_record.comment = dst_comment
                         else:
-                            new_record = Record(dst_addr, "地址", tags=record.tags, comment=dst_comment)
+                            new_record = Record(dst_addr, "地址", comment=dst_comment)
                             records.append(new_record)
                             addr2idx[dst_addr] = len(records) - 1
 
