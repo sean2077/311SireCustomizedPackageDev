@@ -7,12 +7,12 @@ san11pk内存地址记录工具，支持：
 import os
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
 from datetime import datetime
 
 import idaapi
 import idautils
 import idc
+from attrs import define, field
 from prettytable import MARKDOWN, PrettyTable
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -78,6 +78,16 @@ def reach_table_start(line: str) -> bool:
     return any(line.startswith(x) for x in ("| ---", "|--", "| :--", "|:--"))
 
 
+def format_comment(comment: str) -> str:
+    """注释"""
+    comment = comment.strip()
+    if REMOVE_NEWLINE_IN_COMMENT:
+        comment = comment.replace("\\n", "").replace("\n", "")
+    else:
+        comment = comment.replace("\\n", "\n")
+    return comment
+
+
 ##########################################################################
 ###                           内存地址记录相关                            ###
 ##########################################################################
@@ -85,13 +95,13 @@ def reach_table_start(line: str) -> bool:
 RECORD_FIELDS = ("地址", "类型", "名称", "注释", "附加信息")
 
 
-@dataclass
+@define
 class Record:
     address: int
     type: str
     name: str = ""
-    comment: str = ""
-    info: dict = field(default_factory=dict)  # 附加信息, 形如 key1=value1,key2=value2
+    comment: str = field(default="", converter=format_comment)
+    info: dict = field(factory=dict)  # 附加信息, 形如 key1=value1,key2=value2
 
     @classmethod
     def from_table_row(cls, row: str):  # | 地址 | 类型 | 名称 | 注释 | 附加信息 |
@@ -103,10 +113,6 @@ class Record:
         type_ = type_.strip()
         name = name.strip()
         comment = comment.strip()
-        if REMOVE_NEWLINE_IN_COMMENT:
-            comment = comment.replace("\\n", " ")
-        else:
-            comment = comment.replace("\\n", "\n")
         ret = cls(address, type_, name, comment)
 
         # 附加信息
@@ -509,8 +515,7 @@ def export_records():
             # 去掉一些特例
             if any(cmt.startswith(prefix) for prefix in ("Microsoft", "MFC", "?")):
                 continue
-            record = Record(func_ea, "函数")
-            record.comment = cmt
+            record = Record(func_ea, "函数", comment=cmt)
             name = idaapi.get_func_name(func_ea)
             if not is_auto_generated_name(name):
                 record.name = name
@@ -537,9 +542,7 @@ def export_records():
             if any(cmt.startswith(prefix) for prefix in ("Microsoft", "MFC", "?", "D3DX", "jumptable")):
                 continue
 
-            record = Record(ea, "地址")
-            record.comment = cmt
-            record.name = name
+            record = Record(ea, "地址", name, cmt)
             records.append(record)
             addr2idx[ea] = len(records) - 1
 
