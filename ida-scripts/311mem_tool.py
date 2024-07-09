@@ -332,8 +332,8 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
 
     # 创建数组
     is_small_array = array_size <= 100 or array_size * dt_sz < 0x1000  # 小数组
-    need_create_array = not no_array and is_small_array
-    if need_create_array:  # 作为一个整体创建数组
+    create_struct_array = not no_array and is_small_array
+    if create_struct_array:  # 作为一个整体创建数组
         if not idc.make_array(record.address, array_size):
             _add_bad_record(record, "create_array_failed", f"Failed to create array at {record.address:x}.\n")
             return False
@@ -359,19 +359,24 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                 if not idc.create_data(addr, dt_flag, dt_sz, idaapi.BADNODE):
                     _add_bad_record(record, "create_data_failed", f"Failed to create data type {dt_str} at {addr:x}.\n")
                     continue
-            if no_array:
-                if not no_append_cmt:
-                    idaapi.set_cmt(addr, f"{record.name}[{i}]", True)
-            else:
+
+            # 设置数组元素注释
+            if not no_append_cmt:
                 if dt_str == "address":
-                    idaapi.set_cmt(addr, "", True)  # 不视作整体数组，则每个元素的 repeatable comment 不应被覆盖
-                    # 对地址数组的元素的注释进行处理
+                    idaapi.set_cmt(addr, "", True)  # 每个地址元素的 repeatable comment 不应被覆盖
+                else:
+                    idaapi.set_cmt(addr, f"{record.name}[{i}]", True)
+
+                # 一些额外处理
+
+                # 如果元素为地址，则对指向的地址附加 repeatable 注释
+                if dt_str == "address":
                     dst_addr = idaapi.get_wide_dword(addr)
                     dst_func = idaapi.get_func(dst_addr)
                     if dst_func and dst_func.start_ea == dst_addr:  # 函数首地址
                         dst_comment = idaapi.get_func_cmt(dst_func, True) or ""
                         add_comment = f"[{record.name}+{4*i:x}]"
-                        if add_comment not in dst_comment:
+                        if not no_append_cmt and add_comment not in dst_comment:
                             dst_comment += " " + add_comment
                             idaapi.set_func_cmt(dst_addr, dst_comment, True)
                         # 更新函数记录
@@ -382,10 +387,9 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                             new_record = Record(dst_addr, "函数", comment=dst_comment)
                             records.append(new_record)
                             addr2idx[dst_addr] = len(records) - 1
-                    else:
+                    else:  # 非函数
                         dst_comment = idaapi.get_cmt(dst_addr, True) or ""
                         add_comment = f"[{record.name}+{4*i:x}]"
-
                         if not no_append_cmt and add_comment not in dst_comment:
                             dst_comment += " " + add_comment
                             idaapi.set_cmt(dst_addr, dst_comment, True)
