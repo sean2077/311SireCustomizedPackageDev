@@ -88,8 +88,7 @@ class Record:
     type: str
     name: str = ""
     comment: str = ""
-
-    _info: dict = field(default_factory=dict)  # 附加信息, 形如 key1=value1,key2=value2
+    info: dict = field(default_factory=dict)  # 附加信息, 形如 key1=value1,key2=value2
 
     @classmethod
     def from_table_row(cls, row: str):  # | 地址 | 类型 | 名称 | 注释 | 附加信息 |
@@ -108,9 +107,13 @@ class Record:
         if info:
             for item in info.split(";"):
                 key, value = item.split("=")
-                ret._info[key.strip()] = value.strip()
+                ret.info[key.strip()] = value.strip()
 
         return ret
+
+    def check_opt(self, key: str) -> bool:
+        """检查附加信息中是否存在 key, 且值为 1"""
+        return key in self.info and self.info[key] == "1"
 
 
 # 记录有问题的 record
@@ -165,7 +168,7 @@ def collect_records(file_path: str = MEM_RECORDS_FILE) -> tuple[list[Record], di
 def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
     rows = []
     for record in records:
-        info = ";".join([f"{k}={v}" for k, v in record._info.items()])
+        info = ";".join([f"{k}={v}" for k, v in record.info.items()])
         comment = record.comment
         if comment:
             comment = comment.replace("\n", "\\n")
@@ -220,14 +223,14 @@ def _import_function(record: Record) -> bool:
     # 处理函数声明
     decl = idaapi.print_type(record.address, idaapi.PRTYPE_1LINE | idaapi.NTF_CHKSYNC)
     # 若未记录函数声明，则记录
-    if "decl" not in record._info:
+    if "decl" not in record.info:
         if decl:
-            record._info["decl"] = decl
+            record.info["decl"] = decl
     else:  # 否则，尝试更新函数签名
         tinfo = idaapi.tinfo_t()
-        if idaapi.parse_decl(tinfo, None, record._info["decl"] + ";", idaapi.PT_SIL) is not None:
+        if idaapi.parse_decl(tinfo, None, record.info["decl"] + ";", idaapi.PT_SIL) is not None:
             if idaapi.apply_tinfo(record.address, tinfo, idaapi.TINFO_DEFINITE):
-                idaapi.msg(f"- Function at {record.address:x} declaration updated to {record._info['decl']}.\n")
+                idaapi.msg(f"- Function at {record.address:x} declaration updated to {record.info['decl']}.\n")
             else:
                 _add_bad_record(
                     record,
@@ -239,17 +242,17 @@ def _import_function(record: Record) -> bool:
             _add_bad_record(
                 record,
                 "decl_parse_failed",
-                f"Failed to parse function at {record.address:x} declaration: {record._info['decl']}, record declaration in IDA.\n",
+                f"Failed to parse function at {record.address:x} declaration: {record.info['decl']}, record declaration in IDA.\n",
             )
             if decl:
-                record._info["decl"] = decl
+                record.info["decl"] = decl
 
     return True
 
 
 def _import_parameter(record: Record) -> bool:
     """导入类型为 "参数" 的记录"""
-    param_type = record._info.get("type", None)
+    param_type = record.info.get("type", None)
     if not param_type:
         idaapi.msg(f"- Parameter at {record.address:x} has no type info. Skipped.\n")
         return False
@@ -278,7 +281,7 @@ def _import_parameter(record: Record) -> bool:
 
 def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int]) -> bool:
     """导入类型为 "数表" 的记录"""
-    table_type = record._info.get("type", None)  # data_type[array_size]
+    table_type = record.info.get("type", None)  # data_type[array_size]
     if not table_type:
         _add_bad_record(record, "no_table_type", f"Table at {record.address:x} has no type info. Skipped.\n")
         return False
@@ -313,7 +316,7 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
 
     # 创建数组
     is_small_array = array_size <= 100 or array_size * dt_sz < 0x1000  # 小数组
-    no_array = record._info.get("no_array", "0") == "1"  # 不作为一个整体创建数组
+    no_array = record.check_opt("no_array")  # 不作为一个整体创建数组
     need_create_array = not no_array and is_small_array
     if need_create_array:  # 作为一个整体创建数组
         if not idc.make_array(record.address, array_size):
@@ -322,13 +325,13 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
         # 设置数组参数
         ap = idaapi.array_parameters_t()
         ap.flags = idaapi.AP_INDEX | idaapi.AP_ARRAY
-        if record._info.get("idxhex", None) != "1":
+        if record.check_opt("idxhex"):
             ap.flags |= idaapi.AP_IDXDEC  # 默认十进制
         else:
             ap.flags |= idaapi.AP_IDXHEX
         ap.lineitems = 0 if is_struct_array else 1
-        if record._info.get("lineitems", None):
-            ap.lineitems = int(record._info["lineitems"])
+        if record.info.get("lineitems", None):
+            ap.lineitems = int(record.info["lineitems"])
         idaapi.set_array_parameters(record.address, ap)
     else:  # 逐个创建数组元素
         for i in range(1, array_size):
@@ -341,7 +344,7 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                 if not idc.create_data(addr, dt_flag, dt_sz, idaapi.BADNODE):
                     _add_bad_record(record, "create_data_failed", f"Failed to create data type {dt_str} at {addr:x}.\n")
                     continue
-            if record._info.get("no_array", None) != "1":
+            if record.check_opt("no_array"):
                 idaapi.set_cmt(addr, f"{record.name}[{i}]", True)
             else:
                 if dt_str == "address":
@@ -366,7 +369,8 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                     else:
                         dst_comment = idaapi.get_cmt(dst_addr, True) or ""
                         add_comment = f"[{record.name}+{4*i:x}]"
-                        if add_comment not in dst_comment:
+                        no_append_cmt = record.check_opt("no_append_cmt")
+                        if not no_append_cmt and add_comment not in dst_comment:
                             dst_comment += " " + add_comment
                             idaapi.set_cmt(dst_addr, dst_comment, True)
                         # 更新地址记录
@@ -469,7 +473,7 @@ def export_records():
                     # 更新函数声明
                     decl = idaapi.print_type(record.address, idaapi.PRTYPE_1LINE | idaapi.NTF_CHKSYNC)
                     if decl:
-                        record._info["decl"] = decl
+                        record.info["decl"] = decl
             case _:
                 name = idaapi.get_name(record.address)
                 if not is_auto_generated_name(name):
@@ -493,7 +497,7 @@ def export_records():
             # 更新函数声明
             decl = idaapi.print_type(func_ea, idaapi.PRTYPE_1LINE | idaapi.NTF_CHKSYNC)
             if decl:
-                record._info["decl"] = decl
+                record.info["decl"] = decl
             records.append(record)
             addr2idx[func_ea] = len(records) - 1
 
