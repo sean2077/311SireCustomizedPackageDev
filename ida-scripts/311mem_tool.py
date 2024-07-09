@@ -19,7 +19,10 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 MEM_RECORDS_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "material", "内存地址汇总.md")
 
-FORMAT_MARKDOWN = False  # 是否格式化 markdown 输出
+# 是否格式化 markdown 输出
+FORMAT_MARKDOWN = False
+# 是否去掉注释中的换行符
+REMOVE_NEWLINE_IN_COMMENT = True
 
 ##########################################################################
 ###                               Utils                                ###
@@ -99,7 +102,11 @@ class Record:
         address = int(address, 16)
         type_ = type_.strip()
         name = name.strip()
-        comment = comment.strip().replace("\\n", "\n")
+        comment = comment.strip()
+        if REMOVE_NEWLINE_IN_COMMENT:
+            comment = comment.replace("\\n", " ")
+        else:
+            comment = comment.replace("\\n", "\n")
         ret = cls(address, type_, name, comment)
 
         # 附加信息
@@ -114,6 +121,15 @@ class Record:
     def check_opt(self, key: str) -> bool:
         """检查附加信息中是否存在 key, 且值为 1"""
         return key in self.info and self.info[key] == "1"
+
+    def to_row(self) -> list[str]:
+        return [
+            format_address(self.address),
+            self.type,
+            self.name,
+            self.comment.replace("\n", "\\n"),  # markdown 表格行中不支持换行
+            ";".join([f"{k}={v}" for k, v in self.info.items()]),  # 附加信息
+        ]
 
 
 # 记录有问题的 record
@@ -168,11 +184,7 @@ def collect_records(file_path: str = MEM_RECORDS_FILE) -> tuple[list[Record], di
 def save_records(records: list[Record], dest_file: str = MEM_RECORDS_FILE):
     rows = []
     for record in records:
-        info = ";".join([f"{k}={v}" for k, v in record.info.items()])
-        comment = record.comment
-        if comment:
-            comment = comment.replace("\n", "\\n")
-        rows.append((f"{record.address:08x}", record.type, record.name, comment, info))
+        rows.append(record.to_row())
 
     tb = PrettyTable()
     tb.set_style(MARKDOWN)
@@ -314,9 +326,12 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
             _add_bad_record(record, "create_data_failed", f"Failed to create data type {dt_str} at {record.address:x}.\n")
             return False
 
+    # 一些选项
+    no_array = record.check_opt("no_array")  # 不作为一个整体创建数组
+    no_append_cmt = record.check_opt("no_append_cmt")  # 不追加注释
+
     # 创建数组
     is_small_array = array_size <= 100 or array_size * dt_sz < 0x1000  # 小数组
-    no_array = record.check_opt("no_array")  # 不作为一个整体创建数组
     need_create_array = not no_array and is_small_array
     if need_create_array:  # 作为一个整体创建数组
         if not idc.make_array(record.address, array_size):
@@ -344,8 +359,9 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                 if not idc.create_data(addr, dt_flag, dt_sz, idaapi.BADNODE):
                     _add_bad_record(record, "create_data_failed", f"Failed to create data type {dt_str} at {addr:x}.\n")
                     continue
-            if record.check_opt("no_array"):
-                idaapi.set_cmt(addr, f"{record.name}[{i}]", True)
+            if no_array:
+                if not no_append_cmt:
+                    idaapi.set_cmt(addr, f"{record.name}[{i}]", True)
             else:
                 if dt_str == "address":
                     idaapi.set_cmt(addr, "", True)  # 不视作整体数组，则每个元素的 repeatable comment 不应被覆盖
@@ -369,7 +385,7 @@ def _import_table(record: Record, records: list[Record], addr2idx: dict[int, int
                     else:
                         dst_comment = idaapi.get_cmt(dst_addr, True) or ""
                         add_comment = f"[{record.name}+{4*i:x}]"
-                        no_append_cmt = record.check_opt("no_append_cmt")
+
                         if not no_append_cmt and add_comment not in dst_comment:
                             dst_comment += " " + add_comment
                             idaapi.set_cmt(dst_addr, dst_comment, True)
