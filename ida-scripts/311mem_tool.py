@@ -535,7 +535,7 @@ def export_records():
             if not cmt:
                 continue
             # 忽略一些特例
-            if re.match(r"a+[A-Z]", name):
+            if name.startswith("a"):
                 continue
             if any(name.startswith(prefix) for prefix in ("stru", "sub_", "loc_", "j_", "def_", "__", "unknown_")):
                 continue
