@@ -40,6 +40,19 @@ def format_address(addr: int) -> str:
     return f"{addr:08x}"
 
 
+def is_chinese(char):
+    ranges = [
+        ("\u4e00", "\u9fff"),  # CJK Unified Ideographs
+        ("\u3400", "\u4dbf"),  # CJK Unified Ideographs Extension A
+        ("\u20000", "\u2a6df"),  # CJK Unified Ideographs Extension B
+        ("\u2a700", "\u2b73f"),  # CJK Unified Ideographs Extension C
+        ("\u2b740", "\u2b81f"),  # CJK Unified Ideographs Extension D
+        ("\u2b820", "\u2ceaf"),  # CJK Unified Ideographs Extension E
+        ("\uf900", "\ufaff"),  # CJK Compatibility Ideographs
+    ]
+    return any(start <= char <= end for start, end in ranges)
+
+
 def get_data_flags_size(dt_str: str) -> tuple[int, int]:
     if dt_str in ("byte",):
         return idaapi.byte_flag(), 1
@@ -532,14 +545,15 @@ def export_records():
     for ea, name in idautils.Names():
         if ea not in addr2idx:
             cmt = idaapi.get_cmt(ea, True)
-            if not cmt:
+            if not cmt:  # 如果没有注释，跳过
                 continue
-            # 忽略一些特例
-            if name.startswith("a"):
+            elif any(name.startswith(prefix) for prefix in ("a", "stru", "__", "unknown_")):  # 强制跳过某些前缀开头的名称
                 continue
-            if any(name.startswith(prefix) for prefix in ("stru", "sub_", "loc_", "j_", "def_", "__", "unknown_")):
+            elif is_chinese(cmt[0]):  # 注释第一个字符是中文的保留
+                pass
+            elif any(name.startswith(prefix) for prefix in ("sub_", "loc_", "j_", "def_")):  # 强制跳过某些前缀开头的名称
                 continue
-            if any(cmt.startswith(prefix) for prefix in ("Microsoft", "MFC", "?", "D3DX", "jumptable")):
+            elif any(cmt.startswith(prefix) for prefix in ("Microsoft", "MFC", "?", "D3DX", "jumptable")):
                 continue
 
             record = Record(ea, "地址", name, cmt)
