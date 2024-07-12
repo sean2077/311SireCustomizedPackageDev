@@ -1,7 +1,7 @@
 .vscode
 
 .trash
-
+.tmp
 tmp*
 .clang-format
 
