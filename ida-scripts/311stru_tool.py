@@ -807,7 +807,7 @@ def export_structs():
 
     # 查找所有以 struct_ 开头的结构体（假设这些是我们要导出的结构体）
     for i, sid, name in idautils.Structs():
-        if not is_struct_type(name):
+        if not name.startswith("struct_"):  # 只导出以 struct_ 开头的结构体
             continue
         if sid in sid_to_index:
             struct = structs[sid_to_index[sid]]
