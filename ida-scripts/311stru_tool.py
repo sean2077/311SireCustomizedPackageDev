@@ -48,6 +48,11 @@ def get_pure_data_type(data_type: str) -> str:
     return data_type.split("[")[0].split("*")[0].split("(")[0].strip()
 
 
+def is_struct_type(data_type: str) -> bool:
+    """检查数据类型是否是结构体类型"""
+    return data_type.startswith("struct_") or data_type.startswith("struc_")
+
+
 #######################################################################################################
 ###                                     结构体文件读写相关                                             ###
 #######################################################################################################
@@ -403,7 +408,7 @@ def _get_data_flags(fld: StructField):
     if dt_str in ("string",):
         return idaapi.strlit_flag()
 
-    if dt_str.startswith("struct_"):
+    if is_struct_type(dt_str):
         return idaapi.stru_flag()
 
     return 0  # 其他类型用不到 flag
@@ -433,15 +438,15 @@ def _get_tinfo_from_base_type(base_type: str) -> idaapi.tinfo_t | None:
         return idaapi.tinfo_t(idaapi.BT_VOID)
     if base_type in ("byte", "char", "int8"):
         return idaapi.tinfo_t(idaapi.BT_INT8)
-    if base_type in ("uchar", "uint8"):
+    if base_type in ("uchar", "uint8", "unsigned char"):
         return idaapi.tinfo_t(idaapi.BT_INT8 | idaapi.BTMT_UNSIGNED)
     if base_type in ("word", "short", "int16"):
         return idaapi.tinfo_t(idaapi.BT_INT16)
-    if base_type in ("ushort", "uint16"):
+    if base_type in ("ushort", "uint16", "unsigned short"):
         return idaapi.tinfo_t(idaapi.BT_INT16 | idaapi.BTMT_UNSIGNED)
     if base_type in ("dword", "int"):
         return idaapi.tinfo_t(idaapi.BT_INT32)
-    if base_type in ("uint",):
+    if base_type in ("uint", "unsigned int"):
         return idaapi.tinfo_t(idaapi.BT_INT32 | idaapi.BTMT_UNSIGNED)
     if base_type == "float":
         return idaapi.tinfo_t(idaapi.BT_FLOAT)
@@ -464,9 +469,13 @@ def _get_tinfo_from_data_type(data_type: str) -> idaapi.tinfo_t | None:
 
     # 快速排查一些特例
     if pure_data_type in ("pointer", "address", "pointer32"):
-        return None
+        # 返回 void* 类型
+        t = idaapi.tinfo_t(idaapi.BT_VOID)
+        t.create_ptr(t)
+        return t
 
     if pure_data_type == "string":
+        # 返回 char[] 类型
         t = idaapi.tinfo_t(idaapi.BTF_CHAR)
         t.create_array(t)
         return t
@@ -694,7 +703,7 @@ def _import_struct(struct: Struct) -> bool:
             idaapi.del_struc_members(sptr, field.offset, field.offset + field.size)
         # 添加成员
         data_flag = _get_data_flags(field)
-        if field._pure_data_type.startswith("struct_"):  # 结构体
+        if is_struct_type(field._pure_data_type):  # 结构体
             if field._is_ptr:  # 结构体指针
                 idaapi.add_struc_member(sptr, field.name, field.offset, data_flag, None, field.size)
             else:  # 结构体或结构体数组
@@ -798,7 +807,7 @@ def export_structs():
 
     # 查找所有以 struct_ 开头的结构体（假设这些是我们要导出的结构体）
     for i, sid, name in idautils.Structs():
-        if not name.startswith("struct_"):
+        if not is_struct_type(name):
             continue
         if sid in sid_to_index:
             struct = structs[sid_to_index[sid]]
